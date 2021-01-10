@@ -269,7 +269,7 @@ class CryptolaemusImporter:
                     break
         if self.finished:
             self.config['LAST_IMPORTED_IOC'] = self.first_ioc
-            self.mh.misp.publish(self.event)
+        self.mh.misp.publish(self.event)
 
 
 def init_logger(level):
