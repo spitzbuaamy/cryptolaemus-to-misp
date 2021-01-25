@@ -20,3 +20,6 @@ tags:
 types_sightings:
 - ip-dst|port
 - url
+
+# save  urls as attribute or object
+save_url_as: object
