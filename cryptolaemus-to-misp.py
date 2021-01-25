@@ -8,7 +8,8 @@ from time import mktime
 import feedparser
 import urllib3
 import yaml
-from pymisp import ExpandedPyMISP, MISPEvent, MISPSighting, MISPOrganisation, MISPAttribute
+from pyfaup.faup import Faup
+from pymisp import ExpandedPyMISP, MISPEvent, MISPSighting, MISPOrganisation, MISPAttribute, MISPObject
 
 
 class MispHandler:
@@ -131,6 +132,7 @@ class MispHandler:
         return misp_event
 
 
+
 class CryptolaemusImporter:
     def __init__(self, logger, config):
         self.logger = logger
@@ -140,7 +142,6 @@ class CryptolaemusImporter:
         self.mh = MispHandler(config, logger)
         self.feed_tag = 'feed:cryptolaemus'
         self.first_seen = ''
-        self.last_ioc = config['LAST_IMPORTED_IOC']
         self.import_hashes = config['IMPORT_HASHES']
         self.source = ''
         self.epoch_tag = None
@@ -165,16 +166,43 @@ class CryptolaemusImporter:
         self.mh.misp.add_attribute(self.event.id, attr)
 
     def add_url(self, url):
-        attr = MISPAttribute()
-        attr.type = "url"
-        attr.value = url
-        attr.first_seen = self.first_seen
-        attr.comment = self.source
-        if self.killchain_tax is not None:
-            attr.add_tag(self.killchain_tax)
-        if self.epoch_tag is not None:
-            attr.add_tag(self.epoch_tag)
-        self.mh.misp.add_attribute(self.event.id, attr)
+        if self.config['save_url_as'] == 'attribute':
+            attr = MISPAttribute()
+            attr.type = "url"
+            attr.value = url
+            attr.first_seen = self.first_seen
+            attr.comment = self.source
+            if self.killchain_tax is not None:
+                attr.add_tag(self.killchain_tax)
+            if self.epoch_tag is not None:
+                attr.add_tag(self.epoch_tag)
+            self.mh.misp.add_attribute(self.event.id, attr)
+        elif self.config['save_url_as'] == 'object':
+                value = url
+                f = Faup()
+                f.decode(value)
+                misp_obj = MISPObject('url')
+                misp_obj.name = "url"
+
+                misp_obj.add_attributes('url', value)
+                misp_obj.add_attributes('host', f.get_host())
+                misp_obj.add_attributes('domain', f.get_domain())
+                misp_obj.add_attributes('port', f.get_port())
+                misp_obj.add_attributes('query_string', f.get_query_string())
+                misp_obj.add_attributes('resource_path', f.get_resource_path())
+                misp_obj.add_attributes('scheme', f.get_scheme())
+                misp_obj.add_attributes('subdomain', f.get_subdomain())
+                misp_obj.add_attributes('tld', f.get_tld())
+                misp_obj.add_attributes('credential', f.get_credential())
+                misp_obj.add_attributes('domain_without_tld', f.get_domain_without_tld())
+                misp_obj.add_attributes('fragment', f.get_fragment())
+
+                misp_obj.get_attributes_by_relation('url')[0].add_tag('kill-chain:Delivery')
+                self.mh.misp.add_object(self.event.id, misp_obj)
+
+                return
+        else:
+            self.logger.error("Invalid value for 'save_url_as' in config")
 
     def add_generic(self, hash, type):
         attr = MISPAttribute()
@@ -228,8 +256,6 @@ class CryptolaemusImporter:
         attributes = ioc.split('<code>')
         for attr in attributes:
             if self.check_attr(attr):
-                if attr == self.last_ioc:
-                    self.finished = True
                 type = self.get_ioc_info(attr)
                 if type is None:
                     return
@@ -267,8 +293,7 @@ class CryptolaemusImporter:
                         break
                 if self.finished:
                     break
-        if self.finished:
-            self.config['LAST_IMPORTED_IOC'] = self.first_ioc
+
         self.mh.misp.publish(self.event)
 
 
@@ -295,15 +320,6 @@ def load_config(config_file, logger):
     return config
 
 
-def write_config(config_file, logger, config):
-    try:
-        with open(config_file, "w") as f:
-            config = yaml.dump(config, f)
-    except Exception as e:
-        logger.error("Error while loadig Config")
-        logger.error(e)
-
-
 if __name__ == '__main__':
     urllib3.disable_warnings()
     parser = argparse.ArgumentParser(description='Sync Cryptolaemus IOCs to MISP')
@@ -321,4 +337,3 @@ if __name__ == '__main__':
 
     ci = CryptolaemusImporter(logger, config)
     ci.import_feed()
-    write_config(args.config, logger, ci.config)

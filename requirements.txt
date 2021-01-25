@@ -1,3 +1,6 @@
+wheel
 feedparser
 pyyaml
 pymisp
+pyfaup
+lief

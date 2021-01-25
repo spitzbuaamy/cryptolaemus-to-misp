@@ -13,7 +13,8 @@ galaxies:
 - malware
 - tool
 tags:
-- tlp:white
+- tlp:green
+- pap:green
 - admirality-scale:information-credibility="1"
 - admirality-scale:source-reliability="a"
 types_sightings:
